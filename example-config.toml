@@ -1,0 +1,7 @@
+[secondary_cache.s3_us_east_1]
+type = "s3"
+
+[secondary_cache.s3_us_east_1.config]
+region = "us-east-1"
+bucket = "detcache-example"
+prefix_key = "foo/bar"
