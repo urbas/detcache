@@ -29,4 +29,14 @@ jobs:
           cargo fmt --check
           cargo clippy -- --deny "warnings"
           cargo test
-          nix build -Lv
+
+  nix-build:
+    name: Nix Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build with Nix
+        run: nix build -Lv

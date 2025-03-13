@@ -41,6 +41,17 @@ cat my-derivation.json | nr get
 # Output: /nix/store/a1b2c3-my-derivation
 ```
 
+### Configuration
+
+`nr` can be configured to use secondary caches (like S3) by providing a
+configuration file:
+
+```bash
+nr --config path/to/config.toml get < input.json
+```
+
+See [example-config.toml](example-config.toml) for a reference configuration.
+
 ## How It Works
 
 `nr` operates on a simple but powerful principle:

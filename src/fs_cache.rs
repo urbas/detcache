@@ -1,39 +1,35 @@
-use std::io::Write;
+use std::fs;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
-use std::{env, fs};
 use uuid::Uuid;
 
-pub struct Config {
-    cache_dir: PathBuf,
-}
+use crate::config;
 
-impl Config {
-    pub fn new() -> Result<Self, String> {
-        let cache_dir = match env::var("XDG_CACHE_HOME") {
-            Ok(dir) => PathBuf::from(dir),
-            Err(_) => {
-                let home = env::var("HOME")
-                    .map_err(|_| "HOME environment variable not set".to_string())?;
-                PathBuf::from(home).join(".cache")
-            }
-        };
-
-        Ok(Config { cache_dir })
-    }
-
-    pub fn with_cache_dir(cache_dir: PathBuf) -> Self {
-        Config { cache_dir }
-    }
-}
-
-pub fn get_by_sha256_hash(sha256_hash: &str, config: &Config) -> Result<String, String> {
+pub async fn get_by_sha256_hash(
+    sha256_hash: &str,
+    config: &config::Config,
+) -> Result<Option<String>, String> {
     let cached_value_file = local_fs_cache_path(sha256_hash, config)?;
 
-    fs::read_to_string(&cached_value_file)
-        .map_err(|_e| format!("Could not find a value associated with {sha256_hash:#?}."))
+    match fs::read_to_string(&cached_value_file) {
+        Ok(value) => Ok(Some(value)),
+        Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(format!(
+                    "Could not find a value associated with {sha256_hash:#?}. Error: {err:?}"
+                ))
+            }
+        }
+    }
 }
 
-pub fn put_by_sha256_hash(sha256_hash: &str, value: &str, config: &Config) -> Result<(), String> {
+pub async fn put_by_sha256_hash(
+    sha256_hash: &str,
+    value: &str,
+    config: &config::Config,
+) -> Result<(), String> {
     let cached_value_file = local_fs_cache_path(sha256_hash, config)?;
 
     if let Some(parent) = cached_value_file.parent() {
@@ -50,15 +46,13 @@ pub fn put_by_sha256_hash(sha256_hash: &str, value: &str, config: &Config) -> Re
         .map_err(|e| format!("Failed to write to temporary file {temp_file_path:#?}: {e}"))?;
     file.sync_all()
         .map_err(|e| format!("Failed to sync temporary file {temp_file_path:#?}: {e}"))?;
-
-    // Atomically rename the temporary file to the final destination
     fs::rename(&temp_file_path, &cached_value_file)
         .map_err(|e| format!("Failed to rename temporary file to {cached_value_file:#?}: {e}"))?;
 
     Ok(())
 }
 
-fn local_fs_cache_path(key: &str, config: &Config) -> Result<PathBuf, String> {
+fn local_fs_cache_path(key: &str, config: &config::Config) -> Result<PathBuf, String> {
     let first_byte = &key[0..2];
     let second_byte = &key[2..4];
     let remaining_bytes = &key[4..];
@@ -78,23 +72,32 @@ mod tests {
     use crate::hashing;
     use tempfile::TempDir;
 
-    #[test]
-    fn test_put_and_get_by_data() {
+    #[tokio::test]
+    async fn test_put_and_get_by_data() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
-        let config = Config {
-            cache_dir: temp_dir.path().to_path_buf(),
-        };
+        let config = config::Config::with_cache_dir(temp_dir.path().to_path_buf());
 
         let test_data = "foo";
-        let value = "/nix/store/abcd-foo";
+        let value = "/nix/store/abcd-foo".to_string();
 
         let hash = hashing::calculate_sha256_streaming(&mut std::io::Cursor::new(test_data))
             .expect("Failed to calculate the hash.s");
-        put_by_sha256_hash(&hash, value, &config).expect("Failed to put value");
 
-        let retrieved_path = get_by_sha256_hash(&hash, &config).expect("Failed to get value");
+        let retrieved_path = get_by_sha256_hash(&hash, &config)
+            .await
+            .expect("Failed to get value");
 
-        assert_eq!(retrieved_path, value);
+        assert_eq!(retrieved_path, None);
+
+        put_by_sha256_hash(&hash, &value, &config)
+            .await
+            .expect("Failed to put value");
+
+        let retrieved_path = get_by_sha256_hash(&hash, &config)
+            .await
+            .expect("Failed to get value");
+
+        assert_eq!(retrieved_path, Some(value));
     }
 }

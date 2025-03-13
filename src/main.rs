@@ -1,10 +1,14 @@
 use clap::{Parser, Subcommand};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use serde_json::json;
 use std::io;
 use std::path::PathBuf;
+mod cache;
+mod config;
 mod fs_cache;
 mod hashing;
+mod s3_cache;
+mod secondary_cache;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -12,6 +16,9 @@ struct Cli {
     /// Optional custom cache directory
     #[arg(long)]
     cache_dir: Option<PathBuf>,
+
+    #[arg(long)]
+    config: Option<PathBuf>,
 
     /// Increase verbosity level (can be used multiple times)
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -24,15 +31,20 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
 #[derive(Subcommand)]
 enum Commands {
-    /// Get the value that's associated with the data from stdin
+    /// Get the value that's associated with the data from stdin.
+    /// This command exits with code 0 if the value was found, exit code 1 if the value was found,
+    /// and error code 2 if an error occurred.
     Get {
         /// Output the result as JSON
         #[arg(long)]
         json: bool,
     },
     /// Associates data from stdin with the given value
+    /// This command exits with code 0 if the value was added to all caches successfully and
+    /// exit code 1 if the value was not pushed to any of the caches,
     Put {
         /// The value to which to associate the data
         value: String,
@@ -42,10 +54,10 @@ enum Commands {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
-    // Initialize logger with appropriate level
     let log_level = match cli.verbose as i8 - cli.quiet as i8 {
         i8::MIN..=-2 => log::LevelFilter::Off,
         -1 => log::LevelFilter::Error,
@@ -57,72 +69,88 @@ fn main() {
 
     env_logger::Builder::new().filter_level(log_level).init();
 
-    let config = if let Some(cache_dir) = cli.cache_dir {
-        fs_cache::Config::with_cache_dir(cache_dir)
+    let mut config = if let Some(cache_dir) = cli.cache_dir {
+        config::Config::with_cache_dir(cache_dir)
     } else {
-        match fs_cache::Config::new() {
+        match config::Config::new() {
             Ok(config) => config,
             Err(e) => {
-                error!("Error initializing configuration: {e}");
+                error!("{e}");
                 std::process::exit(1);
             }
         }
     };
 
+    if let Some(config_path) = cli.config {
+        match config.with_config_file(config_path) {
+            Ok(loaded_config) => config = loaded_config,
+            Err(e) => {
+                error!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     match &cli.command {
         Commands::Get { json } => {
             let hash = hashing::calculate_sha256_streaming(&mut io::stdin()).unwrap();
             debug!("Calculated hash: {hash}");
-            match fs_cache::get_by_sha256_hash(&hash, &config) {
-                Ok(value) => {
+            match cache::get(&hash, &config).await {
+                Ok(Some(value)) => {
                     info!("Successfully retrieved value for hash {hash}");
-                    if *json {
-                        let output = json!({
-                            "key": hash,
-                            "value": value
-                        });
-                        println!("{output}");
-                    } else {
-                        println!("{value}");
-                    }
+                    print_output(*json, &hash, Some(&value));
+                    std::process::exit(0);
+                }
+                Ok(None) => {
+                    info!("Value not found for hash {hash}");
+                    print_output(*json, &hash, None);
+                    std::process::exit(1);
                 }
                 Err(e) => {
-                    warn!("{e}");
-                    if *json {
-                        let output = json!({
-                            "key": hash
-                        });
-                        println!("{output}");
-                    }
-                    std::process::exit(1);
+                    error!("{e}");
+                    print_output(*json, &hash, None);
+                    std::process::exit(2);
                 }
             }
         }
         Commands::Put { value, json } => {
             let hash = hashing::calculate_sha256_streaming(&mut io::stdin()).unwrap();
             debug!("Calculated hash: {hash}");
-            match fs_cache::put_by_sha256_hash(&hash, value, &config) {
+            match cache::put(&hash, value, &config).await {
                 Ok(_) => {
                     info!("Successfully stored value for hash {hash}");
-                    if *json {
-                        let output = json!({
-                            "key": hash,
-                            "value": value
-                        });
-                        println!("{output}");
-                    }
+                    print_output(*json, &hash, Some(value));
+                    std::process::exit(0);
                 }
                 Err(e) => {
-                    warn!("{e}");
-                    if *json {
-                        let output = json!({
-                            "key": hash
-                        });
-                        println!("{output}");
-                    }
+                    error!("{e}");
+                    print_output(*json, &hash, None);
                     std::process::exit(1);
                 }
             }
         }
+    }
+}
+
+/// Prints the output in either JSON or plain text format
+fn print_output(json_format: bool, key: &str, value: Option<&str>) {
+    if json_format {
+        match value {
+            Some(val) => {
+                let output = json!({
+                    "key": key,
+                    "value": val
+                });
+                println!("{output}");
+            }
+            None => {
+                let output = json!({
+                    "key": key
+                });
+                println!("{output}");
+            }
+        }
+    } else if let Some(val) = value {
+        println!("{val}");
     }
 }
