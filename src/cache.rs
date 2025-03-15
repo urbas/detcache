@@ -4,7 +4,7 @@ use crate::secondary_cache;
 
 /// Get a value by its SHA256 hash
 /// Fetches from both fs_cache and secondary cache in parallel, prioritizing fs_cache
-pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<String>, String> {
+pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<Vec<u8>>, String> {
     // Clone these so they can be moved into spawned tasks
     let sha256_hash_primary = sha256_hash.to_string();
     let sha256_hash_secondary = sha256_hash.to_string();
@@ -42,7 +42,7 @@ pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<St
 
 /// Store a value with its SHA256 hash
 /// Stores in both the fs_cache and the secondary cache in parallel
-pub async fn put(sha256_hash: &str, value: &str, config: &config::Config) -> Result<(), String> {
+pub async fn put(sha256_hash: &str, value: &[u8], config: &config::Config) -> Result<(), String> {
     let (primary_result, secondary_result) = tokio::join!(
         fs_cache::put_by_sha256_hash(sha256_hash, value, config),
         secondary_cache::put(sha256_hash, value, config)

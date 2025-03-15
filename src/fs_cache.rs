@@ -8,10 +8,10 @@ use crate::config;
 pub async fn get_by_sha256_hash(
     sha256_hash: &str,
     config: &config::Config,
-) -> Result<Option<String>, String> {
+) -> Result<Option<Vec<u8>>, String> {
     let cached_value_file = local_fs_cache_path(sha256_hash, config)?;
 
-    match fs::read_to_string(&cached_value_file) {
+    match fs::read(&cached_value_file) {
         Ok(value) => Ok(Some(value)),
         Err(err) => {
             if err.kind() == ErrorKind::NotFound {
@@ -27,7 +27,7 @@ pub async fn get_by_sha256_hash(
 
 pub async fn put_by_sha256_hash(
     sha256_hash: &str,
-    value: &str,
+    value: &[u8],
     config: &config::Config,
 ) -> Result<(), String> {
     let cached_value_file = local_fs_cache_path(sha256_hash, config)?;
@@ -42,7 +42,7 @@ pub async fn put_by_sha256_hash(
     let temp_file_path = cached_value_file.with_extension(format!("tmp-{}", uuid));
     let mut file = fs::File::create(&temp_file_path)
         .map_err(|e| format!("Failed to create temporary file {temp_file_path:#?}: {e}"))?;
-    file.write_all(value.as_bytes())
+    file.write_all(value)
         .map_err(|e| format!("Failed to write to temporary file {temp_file_path:#?}: {e}"))?;
     file.sync_all()
         .map_err(|e| format!("Failed to sync temporary file {temp_file_path:#?}: {e}"))?;
@@ -69,7 +69,6 @@ fn local_fs_cache_path(key: &str, config: &config::Config) -> Result<PathBuf, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hashing;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -78,26 +77,23 @@ mod tests {
 
         let config = config::Config::with_cache_dir(temp_dir.path().to_path_buf());
 
-        let test_data = "foo";
-        let value = "/nix/store/abcd-foo".to_string();
+        let hash = "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c";
+        let value = b"/nix/store/abcd-foo";
 
-        let hash = hashing::calculate_sha256_streaming(&mut std::io::Cursor::new(test_data))
-            .expect("Failed to calculate the hash.s");
-
-        let retrieved_path = get_by_sha256_hash(&hash, &config)
+        let retrieved_path = get_by_sha256_hash(hash, &config)
             .await
             .expect("Failed to get value");
 
         assert_eq!(retrieved_path, None);
 
-        put_by_sha256_hash(&hash, &value, &config)
+        put_by_sha256_hash(hash, value, &config)
             .await
             .expect("Failed to put value");
 
-        let retrieved_path = get_by_sha256_hash(&hash, &config)
+        let retrieved_path = get_by_sha256_hash(hash, &config)
             .await
             .expect("Failed to get value");
 
-        assert_eq!(retrieved_path, Some(value));
+        assert_eq!(retrieved_path, Some(value.to_vec()));
     }
 }

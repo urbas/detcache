@@ -3,7 +3,7 @@ use crate::s3_cache;
 use tokio::task::JoinSet;
 
 /// Get a value by its SHA256 hash from the secondary cache
-pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<String>, String> {
+pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<Vec<u8>>, String> {
     if config.secondary_cache.is_empty() {
         return Ok(None);
     }
@@ -49,7 +49,7 @@ pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<St
 }
 
 /// Store a value with its SHA256 hash in the secondary cache
-pub async fn put(sha256_hash: &str, value: &str, config: &config::Config) -> Result<(), String> {
+pub async fn put(sha256_hash: &str, value: &[u8], config: &config::Config) -> Result<(), String> {
     if config.secondary_cache.is_empty() {
         return Ok(());
     }
@@ -60,7 +60,7 @@ pub async fn put(sha256_hash: &str, value: &str, config: &config::Config) -> Res
         let name = name.clone();
         let cache_config = cache_config.clone();
         let sha256_hash = sha256_hash.to_string();
-        let value = value.to_string();
+        let value = value.to_vec();
 
         tasks.spawn(async move {
             match cache_config.cache_type.as_str() {

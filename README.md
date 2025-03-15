@@ -16,28 +16,29 @@ nix run github:urbas/nr# -- help
 
 ### Basic Operations
 
-- **Get a store path from data**:
+- **Associate data that's been deterministically calculated from some inputs**:
 
   ```bash
-  nr get < input.json
+  echo -n <calculated data> | nr put <sha-256 hash of inputs>
   ```
 
-  Returns the Nix store path associated with the data from standard input.
+- **Get the previously stored data based on given inputs**:
 
-- **Associate data with a store path**:
   ```bash
-  nr put /nix/store/hash-name < input.json
+  nr get <sha-256 hash of inputs>
   ```
-  Associates the provided Nix store path with the data from standard input.
 
 ### Examples
 
 ```bash
-# Cache a derivation result
-cat my-derivation.json | nr put /nix/store/a1b2c3-my-derivation
+# Calculate a hash of all inputs that might influence the store path
+inputs_sha256=$(cat flake.* | sha256sum | cut -f1 -d' ')
+
+# Cache the store path that was calculated from the inputs
+echo -n /nix/store/a1b2c3-my-derivation | nr put $inputs_sha256
 
 # Later, retrieve the path without recalculation
-cat my-derivation.json | nr get
+nr get $inputs_sha256
 # Output: /nix/store/a1b2c3-my-derivation
 ```
 
@@ -47,7 +48,7 @@ cat my-derivation.json | nr get
 configuration file:
 
 ```bash
-nr --config path/to/config.toml get < input.json
+nr --config path/to/config.toml get <inputs sha256 digest>
 ```
 
 See [example-config.toml](example-config.toml) for a reference configuration.
@@ -56,14 +57,14 @@ See [example-config.toml](example-config.toml) for a reference configuration.
 
 `nr` operates on a simple but powerful principle:
 
-1. It calculates SHA-256 hashes of input data blobs
-2. It stores associations between these hashes and Nix store paths
-3. It retrieves these associations when queried with the same data
+1. It stores associations between SHA-256 hashes and Nix store paths
+2. It retrieves these associations when queried with the same data
 
-The tool assumes that relationships between data blobs and Nix store paths are:
+The tool assumes that relationships between the SHA-256 hash and Nix store paths
+are:
 
-- **Deterministic**: The same input always produces the same output
-- **Unique**: Each distinct input maps to a distinct output
+- **Deterministic**: The same hash always produces the same output
+- **Unique**: Each hash maps to a distinct output
 - **Immutable**: Once established, mappings don't change
 
 This allows `nr` to implement aggressive caching strategies for significant

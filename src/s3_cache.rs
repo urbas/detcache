@@ -6,7 +6,7 @@ use crate::config;
 pub async fn get(
     sha256_hash: &str,
     config: &config::SecondaryCacheConfig,
-) -> Result<Option<String>, String> {
+) -> Result<Option<Vec<u8>>, String> {
     let region = config
         .config
         .get("region")
@@ -43,14 +43,8 @@ pub async fn get(
     match client.get_object().bucket(bucket).key(&s3_key).send().await {
         Ok(response) => match response.body.collect().await {
             Ok(bytes) => {
-                let data = bytes.into_bytes();
-                match String::from_utf8(data.to_vec()) {
-                    Ok(content) => {
-                        log::info!("Successfully retrieved object from S3: {s3_key}");
-                        Ok(Some(content))
-                    }
-                    Err(err) => Err(format!("Failed to decode S3 object as UTF-8: {err}")),
-                }
+                log::info!("Successfully retrieved object from S3: {s3_key}");
+                Ok(Some(bytes.to_vec()))
             }
             Err(err) => Err(format!("Failed to read S3 object body: {err}")),
         },
@@ -68,7 +62,7 @@ pub async fn get(
 /// Store a value with its SHA256 hash in the S3 cache
 pub async fn put(
     sha256_hash: &str,
-    value: &str,
+    value: &[u8],
     config: &config::SecondaryCacheConfig,
 ) -> Result<(), String> {
     let region = config
@@ -111,7 +105,7 @@ pub async fn put(
         .put_object()
         .bucket(bucket)
         .key(&s3_key)
-        .body(value.as_bytes().to_vec().into())
+        .body(value.to_vec().into())
         .send()
         .await
     {
