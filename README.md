@@ -47,14 +47,21 @@ detcache get $inputs_sha256
 
 ### Configuration
 
-`detcache` can be configured to use secondary caches (like S3) by providing a
-configuration file:
+`detcache` automatically looks for a configuration file at
+`$XDG_CONFIG_HOME/detcache/config.toml` (or `~/.config/detcache/config.toml` if
+XDG_CONFIG_HOME is not set). You can also specify a custom configuration file:
 
 ```bash
 detcache --config path/to/config.toml get <inputs sha256 digest>
 ```
 
-See [example-config.toml](example-config.toml) for a reference configuration.
+By default, `detcache` stores cache data in `$XDG_CACHE_HOME/detcache/` (or
+`~/.cache/detcache/` if XDG_CACHE_HOME is not set). You can override this with
+the `--cache-dir` option.
+
+The configuration file can define secondary caches (like S3) for distributed
+caching. See [example-config.toml](example-config.toml) for a reference
+configuration.
 
 ## How It Works
 

@@ -49,12 +49,8 @@ pub async fn get(
             Err(err) => Err(format!("Failed to read S3 object body: {err}")),
         },
         Err(err) => {
-            if err.to_string().contains("NoSuchKey") {
-                log::debug!("Object not found in S3: {s3_key}");
-                Ok(None)
-            } else {
-                Err(format!("Failed to get object from S3: {err}"))
-            }
+            log::info!("Failed to get object s3://{bucket}/{s3_key}: {err}");
+            Ok(None)
         }
     }
 }

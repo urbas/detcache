@@ -71,7 +71,15 @@ impl Config {
             }
         };
 
-        if let Some(config_path) = config_path_arg {
+        let config_path = if let Some(path) = config_path_arg {
+            Some(path)
+        } else {
+            get_xdg_config_home()
+                .map(|conf_dir| conf_dir.join("detcache").join("config.toml"))
+                .filter(|conf_file| conf_file.exists())
+        };
+
+        if let Some(config_path) = config_path {
             match config.with_config_file(config_path) {
                 Ok(loaded_config) => config = loaded_config,
                 Err(e) => {
@@ -82,5 +90,15 @@ impl Config {
         }
 
         config
+    }
+}
+
+fn get_xdg_config_home() -> Option<PathBuf> {
+    match env::var("XDG_CONFIG_HOME") {
+        Ok(dir) => Some(PathBuf::from(dir)),
+        Err(_) => match env::var("HOME") {
+            Ok(home) => Some(PathBuf::from(home).join(".config")),
+            Err(_) => None,
+        },
     }
 }
