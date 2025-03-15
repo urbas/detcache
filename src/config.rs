@@ -1,3 +1,4 @@
+use log::error;
 use serde::Deserialize;
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
@@ -55,5 +56,31 @@ impl Config {
         }
 
         Ok(self)
+    }
+
+    pub fn from_cli_args(cache_dir_arg: Option<PathBuf>, config_path_arg: Option<PathBuf>) -> Self {
+        let mut config = if let Some(cache_dir) = cache_dir_arg {
+            Config::with_cache_dir(cache_dir)
+        } else {
+            match Config::new() {
+                Ok(config) => config,
+                Err(e) => {
+                    error!("{e}");
+                    std::process::exit(1);
+                }
+            }
+        };
+
+        if let Some(config_path) = config_path_arg {
+            match config.with_config_file(config_path) {
+                Ok(loaded_config) => config = loaded_config,
+                Err(e) => {
+                    error!("{e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        config
     }
 }

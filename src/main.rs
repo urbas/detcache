@@ -1,9 +1,7 @@
 use clap::{Parser, Subcommand};
-use log::{debug, error, info};
-use serde_json::json;
-use std::io;
 use std::path::PathBuf;
 mod cache;
+mod cmd_raw_cache;
 mod config;
 mod fs_cache;
 mod hashing;
@@ -69,88 +67,16 @@ async fn main() {
 
     env_logger::Builder::new().filter_level(log_level).init();
 
-    let mut config = if let Some(cache_dir) = cli.cache_dir {
-        config::Config::with_cache_dir(cache_dir)
-    } else {
-        match config::Config::new() {
-            Ok(config) => config,
-            Err(e) => {
-                error!("{e}");
-                std::process::exit(1);
-            }
-        }
-    };
-
-    if let Some(config_path) = cli.config {
-        match config.with_config_file(config_path) {
-            Ok(loaded_config) => config = loaded_config,
-            Err(e) => {
-                error!("{e}");
-                std::process::exit(1);
-            }
-        }
-    }
+    let config = config::Config::from_cli_args(cli.cache_dir, cli.config);
 
     match &cli.command {
         Commands::Get { json } => {
-            let hash = hashing::calculate_sha256_streaming(&mut io::stdin()).unwrap();
-            debug!("Calculated hash: {hash}");
-            match cache::get(&hash, &config).await {
-                Ok(Some(value)) => {
-                    info!("Successfully retrieved value for hash {hash}");
-                    print_output(*json, &hash, Some(&value));
-                    std::process::exit(0);
-                }
-                Ok(None) => {
-                    info!("Value not found for hash {hash}");
-                    print_output(*json, &hash, None);
-                    std::process::exit(1);
-                }
-                Err(e) => {
-                    error!("{e}");
-                    print_output(*json, &hash, None);
-                    std::process::exit(2);
-                }
-            }
+            let exit_code = cmd_raw_cache::handle_get(*json, &config).await;
+            std::process::exit(exit_code);
         }
         Commands::Put { value, json } => {
-            let hash = hashing::calculate_sha256_streaming(&mut io::stdin()).unwrap();
-            debug!("Calculated hash: {hash}");
-            match cache::put(&hash, value, &config).await {
-                Ok(_) => {
-                    info!("Successfully stored value for hash {hash}");
-                    print_output(*json, &hash, Some(value));
-                    std::process::exit(0);
-                }
-                Err(e) => {
-                    error!("{e}");
-                    print_output(*json, &hash, None);
-                    std::process::exit(1);
-                }
-            }
+            let exit_code = cmd_raw_cache::handle_put(value, *json, &config).await;
+            std::process::exit(exit_code);
         }
-    }
-}
-
-/// Prints the output in either JSON or plain text format
-fn print_output(json_format: bool, key: &str, value: Option<&str>) {
-    if json_format {
-        match value {
-            Some(val) => {
-                let output = json!({
-                    "key": key,
-                    "value": val
-                });
-                println!("{output}");
-            }
-            None => {
-                let output = json!({
-                    "key": key
-                });
-                println!("{output}");
-            }
-        }
-    } else if let Some(val) = value {
-        println!("{val}");
     }
 }
