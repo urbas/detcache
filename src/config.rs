@@ -3,10 +3,17 @@ use serde::Deserialize;
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct SecondaryCacheConfig {
-    #[serde(rename = "type")]
-    pub cache_type: String,
-    pub config: toml::Table,
+#[serde(tag = "type")]
+pub enum SecondaryCacheConfig {
+    #[serde(rename = "s3")]
+    S3 {
+        bucket: String,
+        region: String,
+        #[serde(default)]
+        profile: Option<String>,
+        #[serde(default)]
+        prefix_key: Option<String>,
+    },
 }
 
 #[derive(Clone)]

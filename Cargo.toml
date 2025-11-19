@@ -1,25 +1,25 @@
 [package]
 name = "detcache"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-aws-config = "1.6.0"
-aws-sdk-s3 = "1.79.0"
-clap = { version = "4.5.32", features = ["derive"] }
-env_logger = "0.11.7"
-log = "0.4.26"
-serde = { version = "1.0.219", features = ["derive"] }
-tokio = { version = "1.44.1", features = ["full"] }
-toml = "0.8.20"
-uuid = { version = "1.16.0", features = ["v4"] }
+aws-config = "1.8.10"
+aws-sdk-s3 = "1.113.0"
+clap = { version = "4.5.53", features = ["derive"] }
+env_logger = "0.11.8"
+log = "0.4.28"
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.48.0", features = ["full"] }
+toml = "0.9.8"
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [dev-dependencies]
-assert_cmd = "2.0.16"
-tempfile = "3.19.0"
+assert_cmd = "2.1.1"
+tempfile = "3.23.0"
 
 [profile.release]
-lto = true
+lto = "thin"
 opt-level = "z"
 panic = "abort"
 strip = true

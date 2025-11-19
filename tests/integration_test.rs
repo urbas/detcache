@@ -1,4 +1,4 @@
-use assert_cmd::prelude::*;
+use assert_cmd::cargo;
 use std::fs::File;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -17,8 +17,7 @@ fn test_put_and_get_with_cli() {
     let hash = "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c";
     let value = "foo calculation result";
 
-    let mut put_cmd = Command::cargo_bin("detcache")
-        .unwrap()
+    let mut put_cmd = Command::new(cargo::cargo_bin!("detcache"))
         .args([
             "--cache-dir",
             cache_path,
@@ -41,8 +40,7 @@ fn test_put_and_get_with_cli() {
     let put_status = put_cmd.wait().expect("Failed to wait for put command");
     assert!(put_status.success(), "Put command failed");
 
-    let get_cmd = Command::cargo_bin("detcache")
-        .unwrap()
+    let get_cmd = Command::new(cargo::cargo_bin!("detcache"))
         .args([
             "--cache-dir",
             cache_path,
