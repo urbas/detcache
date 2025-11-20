@@ -17,8 +17,8 @@ pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<Ve
         let sha256_hash = sha256_hash.to_string();
 
         tasks.spawn(async move {
-            match cache_config.cache_type.as_str() {
-                "s3" => {
+            match &cache_config {
+                config::SecondaryCacheConfig::S3 { .. } => {
                     log::debug!("Trying S3 secondary cache: {name}");
                     match s3_cache::get(&sha256_hash, &cache_config).await {
                         Ok(Some(value)) => Some(value),
@@ -28,10 +28,6 @@ pub async fn get(sha256_hash: &str, config: &config::Config) -> Result<Option<Ve
                             None
                         }
                     }
-                }
-                unknown_type => {
-                    log::warn!("Unknown secondary cache type: {unknown_type}");
-                    None
                 }
             }
         });
@@ -63,8 +59,8 @@ pub async fn put(sha256_hash: &str, value: &[u8], config: &config::Config) -> Re
         let value = value.to_vec();
 
         tasks.spawn(async move {
-            match cache_config.cache_type.as_str() {
-                "s3" => {
+            match &cache_config {
+                config::SecondaryCacheConfig::S3 { .. } => {
                     log::debug!("Storing in S3 secondary cache: {name}");
                     match s3_cache::put(&sha256_hash, &value, &cache_config).await {
                         Ok(()) => Ok(()),
@@ -73,11 +69,6 @@ pub async fn put(sha256_hash: &str, value: &[u8], config: &config::Config) -> Re
                             Err(format!("S3 cache {name}: {e}"))
                         }
                     }
-                }
-                unknown_type => {
-                    let error = format!("Unknown secondary cache type: {unknown_type}");
-                    log::warn!("{error}");
-                    Err(error)
                 }
             }
         });

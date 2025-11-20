@@ -1,7 +1,5 @@
 [secondary_cache.s3_us_east_1]
 type = "s3"
-
-[secondary_cache.s3_us_east_1.config]
 bucket = "detcache-example"
 region = "us-east-1"
 # Optional settings:

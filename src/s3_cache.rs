@@ -8,17 +8,18 @@ pub async fn get(
     sha256_hash: &str,
     config: &config::SecondaryCacheConfig,
 ) -> Result<Option<Vec<u8>>, String> {
-    let bucket = config
-        .config
-        .get("bucket")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing 'bucket' in S3 config".to_string())?;
+    let config::SecondaryCacheConfig::S3 {
+        bucket,
+        region,
+        profile,
+        prefix_key,
+    } = config;
 
-    let s3_key = calculate_s3_key(sha256_hash, config);
+    let s3_key = calculate_s3_key(sha256_hash, prefix_key.as_deref().unwrap_or(""));
 
     log::debug!("Fetching from S3: bucket={bucket}, key={s3_key}");
 
-    let aws_config = create_aws_config(config).await?;
+    let aws_config = create_aws_config(region, profile.as_deref()).await?;
     let client = aws_sdk_s3::Client::new(&aws_config);
 
     match client.get_object().bucket(bucket).key(&s3_key).send().await {
@@ -42,20 +43,23 @@ pub async fn put(
     value: &[u8],
     config: &config::SecondaryCacheConfig,
 ) -> Result<(), String> {
-    let bucket = config
-        .config
-        .get("bucket")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing 'bucket' in S3 config".to_string())?;
+    let (bucket, region, profile, prefix_key) = match config {
+        config::SecondaryCacheConfig::S3 {
+            bucket,
+            region,
+            profile,
+            prefix_key,
+        } => (bucket, region, profile, prefix_key),
+    };
 
-    let s3_key = calculate_s3_key(sha256_hash, config);
+    let s3_key = calculate_s3_key(sha256_hash, prefix_key.as_deref().unwrap_or(""));
 
     log::debug!(
         "Storing to S3: bucket={bucket}, key={s3_key}, value_length={}",
         value.len()
     );
 
-    let aws_config = create_aws_config(config).await?;
+    let aws_config = create_aws_config(region, profile.as_deref()).await?;
     let client = aws_sdk_s3::Client::new(&aws_config);
 
     match client
@@ -74,20 +78,15 @@ pub async fn put(
     }
 }
 
-/// Create an AWS config from the given region and cache config
+/// Create an AWS config from the given region and profile
 async fn create_aws_config(
-    config: &config::SecondaryCacheConfig,
+    region: &str,
+    profile: Option<&str>,
 ) -> Result<aws_config::SdkConfig, String> {
-    let region = config
-        .config
-        .get("region")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing 'region' in S3 config".to_string())?;
-
     let mut aws_config_builder =
         aws_config::defaults(BehaviorVersion::latest()).region(Region::new(region.to_string()));
 
-    if let Some(profile) = config.config.get("profile").and_then(|v| v.as_str()) {
+    if let Some(profile) = profile {
         log::debug!("Using AWS profile: {profile}");
         aws_config_builder = aws_config_builder.profile_name(profile);
     }
@@ -95,14 +94,8 @@ async fn create_aws_config(
     Ok(aws_config_builder.load().await)
 }
 
-/// Calculate the S3 key from a SHA256 hash and cache config
-fn calculate_s3_key(sha256_hash: &str, config: &config::SecondaryCacheConfig) -> String {
-    let prefix_key = config
-        .config
-        .get("prefix_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
+/// Calculate the S3 key from a SHA256 hash and prefix_key
+fn calculate_s3_key(sha256_hash: &str, prefix_key: &str) -> String {
     let first_byte = &sha256_hash[0..2];
     let second_byte = &sha256_hash[2..4];
     let remaining_bytes = &sha256_hash[4..];

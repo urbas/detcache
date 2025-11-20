@@ -1,3 +1,4 @@
+use log::debug;
 use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
@@ -10,6 +11,8 @@ pub async fn get_by_sha256_hash(
     config: &config::Config,
 ) -> Result<Option<Vec<u8>>, String> {
     let cached_value_file = local_fs_cache_path(sha256_hash, config)?;
+
+    debug!("Looking for the value of key {sha256_hash} in {cached_value_file:?}...");
 
     match fs::read(&cached_value_file) {
         Ok(value) => Ok(Some(value)),
@@ -36,6 +39,8 @@ pub async fn put_by_sha256_hash(
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create directory {parent:#?}: {e}"))?;
     }
+
+    debug!("Putting the value of key {sha256_hash} into {cached_value_file:?}...");
 
     // We want to write the cache entry atomically. That's why we write to the temporary file first and then rename it.
     let uuid = Uuid::new_v4();
