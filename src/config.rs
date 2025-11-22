@@ -1,10 +1,11 @@
-use log::error;
 use serde::Deserialize;
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type")]
-pub enum SecondaryCacheConfig {
+pub enum CacheConfig {
+    #[serde(rename = "fs")]
+    FS { cache_dir: Option<PathBuf> },
     #[serde(rename = "s3")]
     S3 {
         bucket: String,
@@ -16,68 +17,37 @@ pub enum SecondaryCacheConfig {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
-    pub cache_dir: PathBuf,
-    pub secondary_cache: HashMap<String, SecondaryCacheConfig>,
+    pub caches: HashMap<String, CacheConfig>,
+}
+
+pub fn default_cache_dir() -> Result<PathBuf, String> {
+    match env::var("XDG_CACHE_HOME") {
+        Ok(dir) => Ok(PathBuf::from(dir)),
+        Err(_) => {
+            let home =
+                env::var("HOME").map_err(|_| "HOME environment variable not set".to_string())?;
+            Ok(PathBuf::from(home).join(".cache").join("detcache"))
+        }
+    }
 }
 
 impl Config {
-    pub fn new() -> Result<Self, String> {
-        let cache_dir = match env::var("XDG_CACHE_HOME") {
-            Ok(dir) => PathBuf::from(dir),
-            Err(_) => {
-                let home = env::var("HOME")
-                    .map_err(|_| "HOME environment variable not set".to_string())?;
-                PathBuf::from(home).join(".cache")
-            }
-        };
-
-        Ok(Config {
-            cache_dir,
-            secondary_cache: HashMap::new(),
-        })
-    }
-
-    pub fn with_cache_dir(cache_dir: PathBuf) -> Self {
+    pub fn new() -> Self {
         Config {
-            cache_dir,
-            secondary_cache: HashMap::new(),
+            caches: HashMap::new(),
         }
     }
 
-    pub fn with_config_file(mut self, config_path: PathBuf) -> Result<Self, String> {
-        #[derive(Deserialize)]
-        struct ConfigFile {
-            secondary_cache: Option<HashMap<String, SecondaryCacheConfig>>,
-        }
-
+    pub fn from_config_file(config_path: PathBuf) -> Result<Self, String> {
         let config_content = fs::read_to_string(&config_path)
             .map_err(|e| format!("Failed to read config file: {}", e))?;
 
-        let config_file: ConfigFile = toml::from_str(&config_content)
-            .map_err(|e| format!("Failed to parse config file: {}", e))?;
-
-        if let Some(secondary_cache) = config_file.secondary_cache {
-            self.secondary_cache = secondary_cache;
-        }
-
-        Ok(self)
+        toml::from_str(&config_content).map_err(|e| format!("Failed to parse config file: {}", e))
     }
 
-    pub fn from_cli_args(cache_dir_arg: Option<PathBuf>, config_path_arg: Option<PathBuf>) -> Self {
-        let mut config = if let Some(cache_dir) = cache_dir_arg {
-            Config::with_cache_dir(cache_dir)
-        } else {
-            match Config::new() {
-                Ok(config) => config,
-                Err(e) => {
-                    error!("{e}");
-                    std::process::exit(1);
-                }
-            }
-        };
-
+    pub fn from_cli_args(config_path_arg: Option<PathBuf>) -> Result<Self, String> {
         let config_path = if let Some(path) = config_path_arg {
             Some(path)
         } else {
@@ -86,17 +56,9 @@ impl Config {
                 .filter(|conf_file| conf_file.exists())
         };
 
-        if let Some(config_path) = config_path {
-            match config.with_config_file(config_path) {
-                Ok(loaded_config) => config = loaded_config,
-                Err(e) => {
-                    error!("{e}");
-                    std::process::exit(1);
-                }
-            }
-        }
-
-        config
+        config_path
+            .map(Config::from_config_file)
+            .unwrap_or(Ok(Config::new()))
     }
 }
 

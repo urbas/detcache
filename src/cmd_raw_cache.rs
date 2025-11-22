@@ -1,7 +1,7 @@
 use log::{debug, error, info};
 use std::io::{self, Read, Write};
 
-use crate::{cache, config};
+use crate::{cache, config, error_codes};
 
 /// Handles the Get command
 pub async fn handle_get(key: &str, config: &config::Config) -> i32 {
@@ -13,19 +13,18 @@ pub async fn handle_get(key: &str, config: &config::Config) -> i32 {
 
     match cache::get(key, config).await {
         Ok(Some(value)) => {
-            info!("Successfully retrieved value for key {key}");
             io::stdout().write_all(&value).unwrap_or_else(|e| {
                 error!("Failed to write to stdout: {e}");
             });
-            0
+            error_codes::SUCCESS
         }
         Ok(None) => {
             info!("Value not found for key {key}");
-            1
+            error_codes::VALUE_NOT_FOUND
         }
         Err(e) => {
             error!("{e}");
-            2
+            error_codes::CACHE_ERROR
         }
     }
 }
@@ -39,18 +38,18 @@ pub async fn handle_put(key: &str, config: &config::Config) -> i32 {
     let mut buffer = Vec::new();
     if let Err(e) = io::stdin().read_to_end(&mut buffer) {
         error!("Failed to read from stdin: {e}");
-        return 1;
+        return error_codes::VALUE_NOT_FOUND;
     }
 
     debug!("Storing value for key: {key}");
     match cache::put(key, &buffer, config).await {
         Ok(_) => {
             info!("Successfully stored value for key {key}");
-            0
+            error_codes::SUCCESS
         }
         Err(e) => {
             error!("{e}");
-            1
+            error_codes::CACHE_ERROR
         }
     }
 }
@@ -64,7 +63,7 @@ fn assert_valid_sha256_hash(key: &str) -> Option<i32> {
         error!(
             "Invalid key format: {key}. Key must be a lowercase hex SHA-256 hash (64 characters)"
         );
-        Some(3)
+        Some(error_codes::INVALID_KEY)
     } else {
         None
     }

@@ -1,19 +1,16 @@
 use clap::{Parser, Subcommand};
+use log::error;
 use std::path::PathBuf;
 mod cache;
 mod cmd_raw_cache;
 mod config;
+mod error_codes;
 mod fs_cache;
 mod s3_cache;
-mod secondary_cache;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Optional custom cache directory
-    #[arg(long)]
-    cache_dir: Option<PathBuf>,
-
     #[arg(long)]
     config: Option<PathBuf>,
 
@@ -64,7 +61,13 @@ async fn main() {
 
     env_logger::Builder::new().filter_level(log_level).init();
 
-    let config = config::Config::from_cli_args(cli.cache_dir, cli.config);
+    let config = match config::Config::from_cli_args(cli.config) {
+        Ok(config) => config,
+        Err(e) => {
+            error!("{e}");
+            std::process::exit(error_codes::CONFIG_ERROR);
+        }
+    };
 
     match &cli.command {
         Commands::Get { key } => {
