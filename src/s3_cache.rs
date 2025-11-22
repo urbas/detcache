@@ -6,14 +6,17 @@ use crate::config;
 /// Get a value by its SHA256 hash from the S3 cache
 pub async fn get(
     sha256_hash: &str,
-    config: &config::SecondaryCacheConfig,
+    config: &config::CacheConfig,
 ) -> Result<Option<Vec<u8>>, String> {
-    let config::SecondaryCacheConfig::S3 {
-        bucket,
-        region,
-        profile,
-        prefix_key,
-    } = config;
+    let (bucket, region, profile, prefix_key) = match config {
+        config::CacheConfig::S3 {
+            bucket,
+            region,
+            profile,
+            prefix_key,
+        } => (bucket, region, profile, prefix_key),
+        _ => panic!("s3_cache::get called with non-S3 config"),
+    };
 
     let s3_key = calculate_s3_key(sha256_hash, prefix_key.as_deref().unwrap_or(""));
 
@@ -25,7 +28,7 @@ pub async fn get(
     match client.get_object().bucket(bucket).key(&s3_key).send().await {
         Ok(response) => match response.body.collect().await {
             Ok(bytes) => {
-                log::info!("Successfully retrieved object from s3://{bucket}/{s3_key}");
+                log::info!("Successfully retrieved value from s3://{bucket}/{s3_key}");
                 Ok(Some(bytes.to_vec()))
             }
             Err(err) => Err(format!("Failed to read S3 object body: {err}")),
@@ -41,15 +44,16 @@ pub async fn get(
 pub async fn put(
     sha256_hash: &str,
     value: &[u8],
-    config: &config::SecondaryCacheConfig,
+    config: &config::CacheConfig,
 ) -> Result<(), String> {
     let (bucket, region, profile, prefix_key) = match config {
-        config::SecondaryCacheConfig::S3 {
+        config::CacheConfig::S3 {
             bucket,
             region,
             profile,
             prefix_key,
         } => (bucket, region, profile, prefix_key),
+        _ => panic!("s3_cache::put called with non-S3 config"),
     };
 
     let s3_key = calculate_s3_key(sha256_hash, prefix_key.as_deref().unwrap_or(""));

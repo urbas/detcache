@@ -1,4 +1,11 @@
-[secondary_cache.s3_us_east_1]
+[caches.default]
+type = "fs"
+
+[caches.fs_current_dir]
+type = "fs"
+cache_dir = ".detcache"
+
+[caches.s3_us_east_1]
 type = "s3"
 bucket = "detcache-example"
 region = "us-east-1"
